@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+@preconcurrency import AppKit
 
 @main
 struct FocusDetectiveApp: App {
@@ -22,7 +23,10 @@ struct FocusDetectiveApp: App {
 					.font(.callout)
 					.padding(.bottom, 4)
 
-				ForEach(observer.changes) { change in
+				Toggle("Only show non-click focus changes", isOn: $observer.filterClickInitiated)
+					.padding(.bottom, 8)
+
+				ForEach(observer.filteredChanges) { change in
 					HStack(alignment: .firstTextBaseline) {
 						Text(change.date.formatted(.dateTime.hour().minute().second(.twoDigits)))
 							.font(.callout)
@@ -50,6 +54,13 @@ struct FocusDetectiveApp: App {
 		}
 		.defaultSize(width: 380, height: 380)
 		.defaultPosition(.center)
+		.commands {
+			CommandGroup(replacing: .appInfo) {
+				Button("About Focus Detective") {
+					NSApplication.shared.orderFrontStandardAboutPanel()
+				}
+			}
+		}
 
 	}
 
@@ -70,21 +81,67 @@ struct FocusDetectiveApp: App {
 class FocusObserver {
 
 	var changes: [FocusChange] = []
+	var filterClickInitiated: Bool = false
 
 	@ObservationIgnored
-	private var observer: NSObjectProtocol?
+	nonisolated(unsafe) private var observer: NSObjectProtocol?
+	@ObservationIgnored
+	nonisolated(unsafe) private var lastClickTime: Date?
+
+	var filteredChanges: [FocusChange] {
+		if filterClickInitiated {
+			return changes.filter { !$0.wasClickInitiated }
+		} else {
+			return changes
+		}
+	}
 
 	init() {
+		filterClickInitiated = UserDefaults.standard.bool(forKey: "filterClickInitiated")
+		setupMouseMonitoring()
+		setupFocusObserver()
+	}
+
+	private func setupMouseMonitoring() {
+		var lastMouseLocation = NSEvent.mouseLocation
+		Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+			let currentLocation = NSEvent.mouseLocation
+			let distance = sqrt(pow(currentLocation.x - lastMouseLocation.x, 2) +
+							   pow(currentLocation.y - lastMouseLocation.y, 2))
+			if distance > 5.0 {
+				self?.lastClickTime = Date.now
+				lastMouseLocation = currentLocation
+			}
+		}
+	}
+
+	func toggleFilter() {
+		filterClickInitiated.toggle()
+		UserDefaults.standard.set(filterClickInitiated, forKey: "filterClickInitiated")
+	}
+
+	private func setupFocusObserver() {
 		let center = NSWorkspace.shared.notificationCenter
 		observer = center.addObserver(forName: NSWorkspace.didActivateApplicationNotification,
 			object: nil, queue: nil) { [weak self] notification in
 			let date = Date.now
 			let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
 			let name = app?.localizedName ?? "Unknown"
-			let change = FocusChange(date: date, name: name)
+
+			let wasClickInitiated = self?.lastClickTime.map { clickTime in
+				date.timeIntervalSince(clickTime) < 0.5
+			} ?? false
+
+			let change = FocusChange(date: date, name: name, wasClickInitiated: wasClickInitiated)
 			Task { @MainActor in
 				self?.changes.insert(change, at: 0)
 			}
+		}
+	}
+
+	deinit {
+		if let observer = observer {
+			NSWorkspace.shared.notificationCenter.removeObserver(observer)
 		}
 	}
 
@@ -94,4 +151,5 @@ struct FocusChange: Identifiable {
 	let id = UUID()
 	let date: Date
 	let name: String
+	let wasClickInitiated: Bool
 }
