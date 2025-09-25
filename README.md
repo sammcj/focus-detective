@@ -19,7 +19,7 @@ quite happy with any of them.
  - Ready to download and run. It's sandboxed, signed, and notarized.
  - Full source code available if you'd prefer to build it yourself.
  - Doesn't rely on Python or other tools.
- - Compatible with macOS 14 or later.
+ - Compatible with macOS 15 or later.
 
 ## How to Use
 
@@ -37,4 +37,17 @@ quite happy with any of them.
    an app I had installed via TestFlight. This seems to be a common cause
    without a clear solution (other than removing TestFlight) but at least you
    now have more information and can file a bug report!
+
+## Building from Source
+
+Use the included Makefile for command line builds:
+
+```bash
+make build      # Build debug version
+make release    # Build release version
+make clean      # Clean build artifacts
+make help       # Show all available targets
+```
+
+Alternatively, open `FocusDetective.xcodeproj` in Xcode to build and run.
 

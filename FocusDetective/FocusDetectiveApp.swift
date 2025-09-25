@@ -12,12 +12,6 @@ struct FocusDetectiveApp: App {
 
 	@State var observer = FocusObserver()
 
-	private let formatter: DateFormatter = {
-		let formatter = DateFormatter()
-		formatter.dateFormat = "HH:mm:ss.SSSS"
-		return formatter
-	}()
-
 	var body: some Scene {
 
 		WindowGroup {
@@ -30,14 +24,17 @@ struct FocusDetectiveApp: App {
 
 				ForEach(observer.changes) { change in
 					HStack(alignment: .firstTextBaseline) {
-						Text(formatter.string(from: change.date))
+						Text(change.date.formatted(.dateTime.hour().minute().second(.twoDigits)))
 							.font(.callout)
 							.monospacedDigit()
 							.frame(width: 90, alignment: .leading)
+							.accessibilityLabel("Time: \(change.date.formatted(.dateTime.hour().minute().second(.twoDigits)))")
 						Text(verbatim: change.name)
 							.font(.headline)
+							.accessibilityLabel("Application: \(change.name)")
 					}
 					.padding(.vertical, 4)
+					.accessibilityElement(children: .combine)
 				}
 
 			}
@@ -45,16 +42,25 @@ struct FocusDetectiveApp: App {
 			.navigationTitle("Focus Detective")
 			.toolbar {
 				Button("Open Console", systemImage: "list.bullet.rectangle") {
-					let workspace = NSWorkspace.shared
-					let url = workspace.urlForApplication(withBundleIdentifier: "com.apple.Console")!
-					NSWorkspace.shared.openApplication(at: url, configuration: .init())
+					openConsoleApp()
 				}
+				.accessibilityHint("Opens the Console application to view system logs")
 			}
 
 		}
 		.defaultSize(width: 380, height: 380)
 		.defaultPosition(.center)
 
+	}
+
+	private func openConsoleApp() {
+		let workspace = NSWorkspace.shared
+		guard let url = workspace.urlForApplication(withBundleIdentifier: "com.apple.Console") else {
+			print("Console application not found")
+			return
+		}
+
+		NSWorkspace.shared.openApplication(at: url, configuration: .init())
 	}
 
 }
@@ -71,13 +77,13 @@ class FocusObserver {
 	init() {
 		let center = NSWorkspace.shared.notificationCenter
 		observer = center.addObserver(forName: NSWorkspace.didActivateApplicationNotification,
-			object: nil, queue: nil) { notification in
+			object: nil, queue: nil) { [weak self] notification in
 			let date = Date.now
 			let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
 			let name = app?.localizedName ?? "Unknown"
 			let change = FocusChange(date: date, name: name)
 			Task { @MainActor in
-				self.changes.insert(change, at: 0)
+				self?.changes.insert(change, at: 0)
 			}
 		}
 	}
@@ -85,15 +91,7 @@ class FocusObserver {
 }
 
 struct FocusChange: Identifiable {
-
-	let id: UUID
+	let id = UUID()
 	let date: Date
 	let name: String
-
-	init(date: Date, name: String) {
-		self.id = UUID()
-		self.date = date
-		self.name = name
-	}
-
 }

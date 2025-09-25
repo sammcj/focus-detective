@@ -3,3 +3,7 @@
 
 # Xcode user settings
 xcuserdata/
+
+# Build files
+build
+Focus Detective.app
